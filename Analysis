@@ -1,0 +1,265 @@
+"""
+A/B Test Analysis: E-commerce Checkout Page Redesign
+Simple statistical analysis demonstrating hypothesis testing methodology
+"""
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Set style
+sns.set_style("whitegrid")
+np.random.seed(42)
+
+print("="*70)
+print("A/B TEST ANALYSIS: Checkout Page Redesign")
+print("="*70)
+
+# ============================================================================
+# 1. GENERATE TEST DATA
+# ============================================================================
+print("\n📊 Generating synthetic A/B test data...")
+
+# Sample sizes (realistic for 2-week test)
+n_control = 5000
+n_treatment = 5000
+
+# True conversion rates
+control_rate = 0.085  # 8.5% baseline
+treatment_rate = 0.094  # 9.4% (10.6% relative lift)
+
+# Generate conversions
+np.random.seed(42)
+control_conversions = np.random.binomial(1, control_rate, n_control)
+treatment_conversions = np.random.binomial(1, treatment_rate, n_treatment)
+
+# Create dataframe
+df = pd.DataFrame({
+    'user_id': range(n_control + n_treatment),
+    'group': ['control']*n_control + ['treatment']*n_treatment,
+    'converted': np.concatenate([control_conversions, treatment_conversions])
+})
+
+# Save data
+df.to_csv('ab_test_data.csv', index=False)
+print(f"Generated {len(df):,} user observations")
+print(f"   Control: {n_control:,} | Treatment: {n_treatment:,}")
+
+# ============================================================================
+# 2. CALCULATE CONVERSION RATES
+# ============================================================================
+print("\n" + "="*70)
+print("CONVERSION RATE ANALYSIS")
+print("="*70)
+
+control_data = df[df['group']=='control']
+treatment_data = df[df['group']=='treatment']
+
+# Calculate rates
+control_conv = control_data['converted'].sum()
+control_total = len(control_data)
+control_conv_rate = control_conv / control_total
+
+treatment_conv = treatment_data['converted'].sum()
+treatment_total = len(treatment_data)
+treatment_conv_rate = treatment_conv / treatment_total
+
+print(f"\nControl Conversion Rate:   {control_conv_rate:.4f} ({control_conv}/{control_total})")
+print(f"Treatment Conversion Rate: {treatment_conv_rate:.4f} ({treatment_conv}/{treatment_total})")
+
+# Calculate lift
+absolute_lift = treatment_conv_rate - control_conv_rate
+relative_lift = (treatment_conv_rate / control_conv_rate - 1) * 100
+
+print(f"\nAbsolute Lift: {absolute_lift:.4f} ({absolute_lift*100:.2f} percentage points)")
+print(f"Relative Lift: {relative_lift:.2f}%")
+
+# ============================================================================
+# 3. STATISTICAL SIGNIFICANCE (Chi-Square Test)
+# ============================================================================
+print("\n" + "="*70)
+print("STATISTICAL SIGNIFICANCE TEST")
+print("="*70)
+
+# Create contingency table
+contingency = pd.crosstab(df['group'], df['converted'])
+print("\nContingency Table:")
+print(contingency)
+print()
+
+# Chi-square test
+chi2_stat, p_value, dof, expected_freq = stats.chi2_contingency(contingency)
+
+print(f"Chi-square statistic: {chi2_stat:.4f}")
+print(f"Degrees of freedom:   {dof}")
+print(f"P-value:              {p_value:.6f}")
+
+# Interpretation
+alpha = 0.05
+print(f"\nSignificance level (α): {alpha}")
+if p_value < alpha:
+    print("✅ RESULT: Statistically significant (reject null hypothesis)")
+    print("   The treatment has a significant effect on conversion rate.")
+else:
+    print("❌ RESULT: Not statistically significant (fail to reject null hypothesis)")
+    print("   Insufficient evidence that treatment affects conversion rate.")
+
+# ============================================================================
+# 4. CONFIDENCE INTERVALS
+# ============================================================================
+print("\n" + "="*70)
+print("CONFIDENCE INTERVALS (95%)")
+print("="*70)
+
+# Standard error for difference in proportions
+se_control = np.sqrt(control_conv_rate * (1 - control_conv_rate) / control_total)
+se_treatment = np.sqrt(treatment_conv_rate * (1 - treatment_conv_rate) / treatment_total)
+se_diff = np.sqrt(se_control**2 + se_treatment**2)
+
+# 95% CI for difference (z = 1.96)
+z_critical = 1.96
+margin_of_error = z_critical * se_diff
+
+ci_lower = absolute_lift - margin_of_error
+ci_upper = absolute_lift + margin_of_error
+
+print(f"\nDifference in conversion rates: {absolute_lift:.4f}")
+print(f"Standard error:                 {se_diff:.4f}")
+print(f"95% Confidence Interval:        [{ci_lower:.4f}, {ci_upper:.4f}]")
+print(f"Relative (% lift):              [{(ci_lower/control_conv_rate)*100:.1f}%, {(ci_upper/control_conv_rate)*100:.1f}%]")
+
+if ci_lower > 0:
+    print("\n✅ The confidence interval excludes zero - effect is significant")
+else:
+    print("\n⚠️  The confidence interval includes zero - effect may not be real")
+
+# ============================================================================
+# 5. EFFECT SIZE
+# ============================================================================
+print("\n" + "="*70)
+print("EFFECT SIZE")
+print("="*70)
+
+# Cohen's h for proportions
+def cohens_h(p1, p2):
+    return 2 * (np.arcsin(np.sqrt(p1)) - np.arcsin(np.sqrt(p2)))
+
+effect_size = abs(cohens_h(treatment_conv_rate, control_conv_rate))
+print(f"\nCohen's h: {effect_size:.4f}")
+
+# Interpret effect size
+if effect_size < 0.2:
+    interpretation = "small"
+elif effect_size < 0.5:
+    interpretation = "medium"
+else:
+    interpretation = "large"
+print(f"Interpretation: {interpretation} effect size")
+
+# ============================================================================
+# 6. VISUALIZATIONS
+# ============================================================================
+print("\n" + "="*70)
+print("GENERATING VISUALIZATIONS")
+print("="*70)
+
+# Create figure with 2 subplots
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Bar chart with error bars
+groups = ['Control', 'Treatment']
+rates = [control_conv_rate, treatment_conv_rate]
+errors = [se_control * 1.96, se_treatment * 1.96]  # 95% CI
+colors = ['#3498db', '#2ecc71']
+
+bars = ax1.bar(groups, rates, color=colors, alpha=0.7, edgecolor='black', linewidth=2)
+ax1.errorbar(groups, rates, yerr=errors, fmt='none', color='black', 
+             capsize=10, capthick=2, linewidth=2)
+
+# Add value labels
+for bar, rate in zip(bars, rates):
+    height = bar.get_height()
+    ax1.text(bar.get_x() + bar.get_width()/2., height + 0.003,
+            f'{rate:.2%}',
+            ha='center', va='bottom', fontsize=13, fontweight='bold')
+
+ax1.set_ylabel('Conversion Rate', fontsize=12, fontweight='bold')
+ax1.set_title('Conversion Rate by Group\n(with 95% CI)', 
+             fontsize=13, fontweight='bold', pad=15)
+ax1.set_ylim(0, max(rates) * 1.2)
+
+# Add significance annotation
+if p_value < 0.05:
+    ax1.text(0.5, max(rates) * 1.1, f'p = {p_value:.4f} (significant)', 
+            fontsize=11, ha='center',
+            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.6))
+
+# Plot 2: Counts comparison
+categories = ['Not Converted', 'Converted']
+control_counts = [control_total - control_conv, control_conv]
+treatment_counts = [treatment_total - treatment_conv, treatment_conv]
+
+x = np.arange(len(categories))
+width = 0.35
+
+bars1 = ax2.bar(x - width/2, control_counts, width, label='Control',
+               color='#3498db', alpha=0.7, edgecolor='black')
+bars2 = ax2.bar(x + width/2, treatment_counts, width, label='Treatment',
+               color='#2ecc71', alpha=0.7, edgecolor='black')
+
+ax2.set_ylabel('Number of Users', fontsize=12, fontweight='bold')
+ax2.set_title('User Counts by Outcome', fontsize=13, fontweight='bold', pad=15)
+ax2.set_xticks(x)
+ax2.set_xticklabels(categories)
+ax2.legend(fontsize=11)
+
+# Add value labels
+for bar in bars1:
+    height = bar.get_height()
+    ax2.text(bar.get_x() + bar.get_width()/2., height + 50,
+            f'{int(height):,}', ha='center', va='bottom', fontsize=10)
+for bar in bars2:
+    height = bar.get_height()
+    ax2.text(bar.get_x() + bar.get_width()/2., height + 50,
+            f'{int(height):,}', ha='center', va='bottom', fontsize=10)
+
+plt.tight_layout()
+plt.savefig('ab_test_results.png', dpi=300, bbox_inches='tight')
+print("✅ Saved: ab_test_results.png")
+
+# ============================================================================
+# 7. BUSINESS RECOMMENDATION
+# ============================================================================
+print("\n" + "="*70)
+print("BUSINESS RECOMMENDATION")
+print("="*70)
+
+print(f"""
+Based on analysis of {len(df):,} users over a 2-week test period:
+
+KEY FINDINGS:
+• Treatment group showed {relative_lift:.1f}% relative lift in conversion rate
+• Statistical significance: {"YES" if p_value < 0.05 else "NO"} (p = {p_value:.4f})
+• 95% confidence interval for relative lift: [{(ci_lower/control_conv_rate)*100:.1f}%, {(ci_upper/control_conv_rate)*100:.1f}%]
+• Effect size: {interpretation} (Cohen's h = {effect_size:.4f})
+
+RECOMMENDATION:
+""")
+
+if p_value < 0.05 and relative_lift > 0:
+    print("✅ PROCEED with rollout of new checkout design")
+    print(f"   • Expected conversion rate improvement: {relative_lift:.1f}%")
+    print(f"   • Result is statistically significant and practically meaningful")
+    print(f"   • Recommend gradual rollout: 25% → 50% → 100%")
+elif p_value >= 0.05:
+    print("⚠️  INSUFFICIENT EVIDENCE - Do not proceed yet")
+    print("   • Difference not statistically significant")
+    print("   • Consider extending test duration or increasing sample size")
+else:
+    print("❌ DO NOT PROCEED - Treatment shows negative impact")
+
+print("\n" + "="*70)
+print("Analysis complete! Check 'ab_test_results.png' for visualizations.")
+print("="*70)
